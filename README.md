@@ -1,6 +1,5 @@
 # TODO
 
-make it a package
 Do the 429 avoidance decorator.  learn the best query interval.  use this before @rlretry.  Or maybe use it after rlretry, but just optimize for how long it takes queries to return in general?  yes.  and as an implementation, try setting the query period to the average duration taken for rlretry to return a succesful response (ie. including retries).  But weight this average towards recent results
 
 
