@@ -1,7 +1,7 @@
 import pytest
 import pandas as pd
 
-from src.rlretry import update_average, update_recency_weighted_average
+from rlretry.rlretry import update_average, update_recency_weighted_average
 
 @pytest.mark.parametrize(
         "batch0,batch1,batch2",
