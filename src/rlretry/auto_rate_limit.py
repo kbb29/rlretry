@@ -2,16 +2,16 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 import random
 import time
-from typing import Callable, Optional
+from typing import Callable, Dict, Optional
 
 
 def default_success_func(e: Exception) -> bool:
     return False
 
 
-def get_optimum_interval(average_rewards: defaultdict) -> timedelta:
+def get_optimum_interval(average_rewards: Dict[timedelta, float]) -> timedelta:
     sorted_intervals = sorted(average_rewards.items(), key=lambda x: x[1])
-    return sorted_intervals[-1][1]
+    return sorted_intervals[-1][0]
 
 
 def get_random_interval(
@@ -24,12 +24,12 @@ def get_random_interval(
 
 
 def get_epsilon_greedy_interval(
-    average_rewards: defaultdict,
+    average_rewards: Dict[timedelta, float],
     time_increment: timedelta,
     minimum: timedelta,
     maximum: timedelta,
     epsilon: float,
-):
+) -> timedelta:
     if random.random() < epsilon:
         return get_random_interval(time_increment, minimum, maximum)
     return get_optimum_interval(average_rewards)
@@ -48,10 +48,10 @@ def auto_request_interval(
     seeks to minimize the average interval between successful queries (ie queries which do not raise an exception)
     """
 
-    if minimum % time_increment != 0:
+    if minimum % time_increment != timedelta(seconds=0):
         raise ValueError("minimum must be a multiple of time_increment")
 
-    if maximum % time_increment != 0:
+    if maximum % time_increment != timedelta(seconds=0):
         raise ValueError("maximum must be a multiple of time_increment")
 
     if maximum <= minimum:
@@ -70,9 +70,10 @@ def auto_request_interval(
         last_success_time = None
         last_request_time = None
         subsequent_failed_requests = 0
+        n = 0
 
         def wrapper(*args, **kwargs):
-            nonlocal last_request_time, last_success_time, average_rewards, alpha, subsequent_failed_requests, time_increment, current_interval, epsilon
+            nonlocal last_request_time, last_success_time, average_rewards, alpha, subsequent_failed_requests, time_increment, current_interval, epsilon, n
 
             last_success_time = (
                 datetime.utcnow() if last_success_time is None else last_success_time
@@ -86,7 +87,15 @@ def auto_request_interval(
                 datetime.utcnow() - last_request_time
             )
 
+            print(f'waiting for {sleep_duration}')
+
             time.sleep(max(0, sleep_duration.total_seconds()))
+
+            if n % 5 == 0:
+                print('average rewards')
+                for interval in sorted(average_rewards.keys()):
+                    print (f'    {interval}: {average_rewards[interval]}')
+            n += 1
 
             last_request_time = datetime.utcnow()
 
@@ -124,7 +133,9 @@ def auto_request_interval(
                     new_interval = current_interval + time_increment
                     if new_interval > maximum:
                         new_interval = maximum
+
                 current_interval = new_interval
+                print(f'updated current_interval to {current_interval}')
 
         return wrapper
 

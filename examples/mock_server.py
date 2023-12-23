@@ -5,7 +5,7 @@ from datetime import datetime
 import datetime as dt
 import random
 
-TIME_SPEEDUP = 30
+TIME_SPEEDUP = 20
 
 
 def timedelta(seconds=0):
