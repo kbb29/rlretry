@@ -81,8 +81,8 @@ class StateActionMap:
         initial_value: float = 0.0,
         alpha: float = 0.0,
     ):
-        self._df = df or StateActionMap.default_df()
-        self._counts_df = counts_df or StateActionMap.default_counts_df()
+        self._df = StateActionMap.default_df() if df.empty else df
+        self._counts_df = StateActionMap.default_counts_df() if counts_df.empty else counts_df
         self._last_saved_df = self._df.copy(deep=True)
         self._last_saved_counts_df = self._counts_df.copy(deep=True)
         self._initial_value = initial_value
