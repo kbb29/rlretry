@@ -81,8 +81,12 @@ class StateActionMap:
         initial_value: float = 0.0,
         alpha: float = 0.0,
     ):
-        self._df = StateActionMap.default_df() if df.empty else df
-        self._counts_df = StateActionMap.default_counts_df() if counts_df.empty else counts_df
+        self._df = StateActionMap.default_df() if df is None or df.empty else df
+        self._counts_df = (
+            StateActionMap.default_counts_df()
+            if counts_df is None or counts_df.empty
+            else counts_df
+        )
         self._last_saved_df = self._df.copy(deep=True)
         self._last_saved_counts_df = self._counts_df.copy(deep=True)
         self._initial_value = initial_value
@@ -282,14 +286,15 @@ def rlretry(
     success_reward = RLEnvironment.success_reward(timeout, max_retries)
     initial_value = success_reward if optimistic_initial_values else 0.0
 
-
     def raise_rlexception(e: RLRetryError):
         raise e
 
     def raise_original_exception(e: RLRetryError):
         raise e.original_exception
 
-    raise_exception = raise_original_exception if raise_primary_exception else raise_rlexception
+    raise_exception = (
+        raise_original_exception if raise_primary_exception else raise_rlexception
+    )
 
     def decorator_no_args(func: Callable):
         agent = RLAgent(epsilon, weight_loader, weight_dumper, initial_value, alpha)
