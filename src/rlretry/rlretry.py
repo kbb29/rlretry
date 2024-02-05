@@ -170,6 +170,7 @@ class RLAgent:
         ] = _default_weight_dumper,
         initial_value: float = 0.0,
         alpha: float = 0.0,
+        dump_interval: int = 100,
     ):
         self._state_action_map = StateActionMap(
             *weight_loader(), initial_value, alpha=alpha
@@ -178,6 +179,7 @@ class RLAgent:
         self._age = 0
         self._weight_loader = weight_loader
         self._weight_dumper = weight_dumper
+        self._dump_interval = dump_interval
 
     def dump_weights(self):
         self._weight_dumper(
@@ -190,7 +192,7 @@ class RLAgent:
 
     def choose_action(self, state: str) -> Action:
         self._age += 1
-        if self._age % 100 == 0:
+        if self._age % self._dump_interval == 0:
             self.dump_weights()
 
         if random.random() < self._eps:
@@ -265,6 +267,7 @@ def rlretry(
     weight_dumper: Callable[
         [pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame], None
     ] = RLAgent._default_weight_dumper,
+    dump_interval: int = 100,
     optimistic_initial_values: bool = True,
     alpha=0.0,
     raise_primary_exception=True,
@@ -297,7 +300,7 @@ def rlretry(
     )
 
     def decorator_no_args(func: Callable):
-        agent = RLAgent(epsilon, weight_loader, weight_dumper, initial_value, alpha)
+        agent = RLAgent(epsilon, weight_loader, weight_dumper, initial_value, alpha, dump_interval)
 
         def wrapper(*args, **kwargs):
             start_time = datetime.utcnow()
