@@ -47,7 +47,7 @@ class Action(Enum):
 
 
 class RLRetryError(RuntimeError):
-    def __init__(self, e: RuntimeError, msg: str = ""):
+    def __init__(self, e: Exception, msg: str = ""):
         super().__init__(msg)
         self.original_exception = e
 
@@ -68,7 +68,7 @@ class RLRetryNoException(RuntimeError):
     pass
 
 
-def default_state_func(e: RuntimeError) -> str:
+def default_state_func(e: Exception) -> str:
     cls = e.__class__
     return cls.__name__
 
@@ -228,7 +228,7 @@ class RLEnvironment:
         try:
             self.func_retval = self._func()
             return "success"
-        except RuntimeError as e:
+        except Exception as e:
             self.last_exception = e
             return self._state_func(e)
 
