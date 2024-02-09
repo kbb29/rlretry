@@ -2,7 +2,7 @@ from typing import Tuple
 import pytest
 import pandas as pd
 
-from rlretry.rlretry import RLAgent, update_average, update_recency_weighted_average
+from src.rlretry.rlretry import RLAgent, update_average, update_recency_weighted_average
 
 q_saved = pd.DataFrame([[0]])
 n_saved = pd.DataFrame([[0]])

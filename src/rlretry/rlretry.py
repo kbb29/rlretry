@@ -1,3 +1,4 @@
+from __future__ import annotations
 from datetime import datetime, timedelta
 import random
 import time
@@ -145,19 +146,20 @@ class StateActionMap:
         self._last_saved_counts_df = self._counts_df.copy(deep=True)
 
 
-class RLAgent:
-    @staticmethod
-    def _default_weight_loader() -> Tuple[pd.DataFrame, pd.DataFrame]:
-        return (StateActionMap.default_df(), StateActionMap.default_counts_df())
+def _default_weight_loader() -> Tuple[pd.DataFrame, pd.DataFrame]:
+    return (StateActionMap.default_df(), StateActionMap.default_counts_df())
 
-    @staticmethod
-    def _default_weight_dumper(
-        _df: pd.DataFrame,
-        _counts_df: pd.DataFrame,
-        _previous_df: pd.DataFrame,
-        _previous_counts_df: pd.DataFrame,
-    ):
-        pass
+
+def _default_weight_dumper(
+    _df: pd.DataFrame,
+    _counts_df: pd.DataFrame,
+    _previous_df: pd.DataFrame,
+    _previous_counts_df: pd.DataFrame,
+):
+    pass
+
+
+class RLAgent:
 
     def __init__(
         self,
@@ -232,10 +234,17 @@ class RLEnvironment:
             self.last_exception = e
             return self._state_func(e)
 
+    def next_state_to_reward(self, next_state: str, duration: timedelta) -> float:
+        reward = -1 - duration.total_seconds()
+
+        if next_state == "success":
+            reward += self._success_reward
+
+        return reward
+
     def execute_action(self, state: str, action: Action):
         print(f"RLEnvironment execute_action({state}, {action})")
         previous_action_start_time = datetime.utcnow()
-        reward = -1
         if action == Action.ABRT:
             # need to give -1 reward to the state/action
             next_state = "abort"
@@ -248,10 +257,10 @@ class RLEnvironment:
                 time.sleep(self._max_wait.total_seconds() * 0.5)
 
             next_state = self.run_func()
-            if next_state == "success":
-                reward += self._success_reward
 
-        reward -= (datetime.utcnow() - previous_action_start_time).total_seconds()
+        reward = self.next_state_to_reward(
+            next_state, datetime.utcnow() - previous_action_start_time
+        )
 
         return next_state, reward
 
@@ -263,10 +272,10 @@ def rlretry(
     epsilon: float = 0.1,
     weight_loader: Callable[
         [], Tuple[pd.DataFrame, pd.DataFrame]
-    ] = RLAgent._default_weight_loader,
+    ] = _default_weight_loader,
     weight_dumper: Callable[
         [pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame], None
-    ] = RLAgent._default_weight_dumper,
+    ] = _default_weight_dumper,
     dump_interval: int = 100,
     optimistic_initial_values: bool = True,
     alpha=0.0,
@@ -300,7 +309,9 @@ def rlretry(
     )
 
     def decorator_no_args(func: Callable):
-        agent = RLAgent(epsilon, weight_loader, weight_dumper, initial_value, alpha, dump_interval)
+        agent = RLAgent(
+            epsilon, weight_loader, weight_dumper, initial_value, alpha, dump_interval
+        )
 
         def wrapper(*args, **kwargs):
             start_time = datetime.utcnow()
