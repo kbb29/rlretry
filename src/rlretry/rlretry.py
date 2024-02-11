@@ -40,11 +40,20 @@ def update_recency_weighted_average(
 
 
 class Action(Enum):
-    ABRT = 0
+    ABRT = -0
     RETRY0 = 1
     RETRY0_1 = 2
     RETRY0_2 = 3
     RETRY0_5 = 4
+
+    def sleeptime(self):
+        if self == Action.RETRY0_1:
+            return 0.1
+        elif self == Action.RETRY0_2:
+            return 0.2
+        elif self == Action.RETRY0_5:
+            return 0.5
+        return 0
 
 
 class RLRetryError(RuntimeError):
@@ -70,8 +79,7 @@ class RLRetryNoException(RuntimeError):
 
 
 def default_state_func(e: Exception) -> str:
-    cls = e.__class__
-    return cls.__name__
+    return e.__class__.__name__
 
 
 class StateActionMap:
@@ -122,7 +130,7 @@ class StateActionMap:
         self._counts_df = counts_df
 
     def create_state(self, state: str):
-        self._df.loc[state] = [self._initial_value for _ in list(Action)]
+        self._df.loc[state] = [float(self._initial_value) for _ in list(Action)]
         self._counts_df.loc[state] = [0 for _ in list(Action)]
 
     def update_average_reward(self, state: str, action: Action, new_reward: float):
@@ -207,23 +215,18 @@ class RLAgent:
 
 
 class RLEnvironment:
-    @staticmethod
-    def success_reward(max_wait: timedelta, max_retries: int) -> float:
-        return 2 * (max_wait.total_seconds() + max_retries) + 1
 
     def __init__(
         self,
         func,
         max_wait: timedelta,
-        success_reward: float,
-        state_func=default_state_func,
+        state_func: Callable[[Exception], str] = default_state_func,
     ):
         self._previous_action_start_time = datetime.utcnow()
         self._func = func
         self._state_func = state_func
         self.func_retval = None
         self._max_wait = max_wait
-        self._success_reward = success_reward
         self.last_exception = RLRetryNoException("something has gone wrong")
 
     def run_func(self) -> str:
@@ -235,12 +238,9 @@ class RLEnvironment:
             return self._state_func(e)
 
     def next_state_to_reward(self, next_state: str, duration: timedelta) -> float:
-        reward = -1 - duration.total_seconds()
-
         if next_state == "success":
-            reward += self._success_reward
-
-        return reward
+            return 1 - duration / self._max_wait
+        return -1 - duration / self._max_wait
 
     def execute_action(self, state: str, action: Action):
         print(f"RLEnvironment execute_action({state}, {action})")
@@ -249,12 +249,8 @@ class RLEnvironment:
             # need to give -1 reward to the state/action
             next_state = "abort"
         else:
-            if action == Action.RETRY0_1:
-                time.sleep(self._max_wait.total_seconds() * 0.1)
-            elif action == Action.RETRY0_2:
-                time.sleep(self._max_wait.total_seconds() * 0.2)
-            elif action == Action.RETRY0_5:
-                time.sleep(self._max_wait.total_seconds() * 0.5)
+            if action != Action.RETRY0:
+                time.sleep(self._max_wait.total_seconds() * action.sleeptime())
 
             next_state = self.run_func()
 
@@ -295,8 +291,7 @@ def rlretry(
     :param weight_loader loads the weights (ie. the probabilities that certain actions will be chosen)
     :param weight_dumper a function that saves the weights somewhere (so that you don't start from the beginning next time it runs)
     """
-    success_reward = RLEnvironment.success_reward(timeout, max_retries)
-    initial_value = success_reward if optimistic_initial_values else 0.0
+    initial_value = 1 if optimistic_initial_values else 0.0
 
     def raise_rlexception(e: RLRetryError):
         raise e
@@ -318,7 +313,6 @@ def rlretry(
             environment = RLEnvironment(
                 lambda: func(*args, **kwargs),
                 timeout,
-                success_reward,
                 state_func=state_func,
             )
             current_state = environment.run_func()
