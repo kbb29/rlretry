@@ -2,7 +2,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 import random
 import time
-from typing import Callable, Tuple
+from typing import Callable, Tuple, Union
 from enum import Enum
 import pandas as pd
 
@@ -125,10 +125,6 @@ class StateActionMap:
 
         return best_action
 
-    def load_weights(self, df: pd.DataFrame, counts_df: pd.DataFrame):
-        self._df = df
-        self._counts_df = counts_df
-
     def create_state(self, state: str):
         self._df.loc[state] = [float(self._initial_value) for _ in list(Action)]
         self._counts_df.loc[state] = [0 for _ in list(Action)]
@@ -242,8 +238,8 @@ class RLEnvironment:
             return 1 - duration / self._max_wait
         return -1 - duration / self._max_wait
 
-    def execute_action(self, state: str, action: Action):
-        print(f"RLEnvironment execute_action({state}, {action})")
+    def execute_action(self, action: Action):
+        # print(f"RLEnvironment execute_action({state}, {action})")
         previous_action_start_time = datetime.utcnow()
         if action == Action.ABRT:
             # need to give -1 reward to the state/action
@@ -303,7 +299,9 @@ def rlretry(
         raise_original_exception if raise_primary_exception else raise_rlexception
     )
 
-    def decorator_no_args(func: Callable):
+    def decorator_no_args(
+        func: Callable, return_agent: bool = False
+    ) -> Union[Callable, Tuple[Callable, RLAgent]]:
         agent = RLAgent(
             epsilon, weight_loader, weight_dumper, initial_value, alpha, dump_interval
         )
@@ -326,7 +324,7 @@ def rlretry(
                 action = agent.choose_action(current_state)
                 previous_state = current_state
                 current_state, reward = environment.execute_action(
-                    current_state, action
+                    action
                 )
                 agent.apply_reward(previous_state, action, reward)
                 if current_state == "success":
@@ -341,6 +339,8 @@ def rlretry(
 
             raise_exception(RLRetryMaxRetries(environment.last_exception))
 
+        if return_agent:
+            return wrapper, agent
         return wrapper
 
     return decorator_no_args
