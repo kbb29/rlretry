@@ -5,6 +5,9 @@ import time
 from typing import Callable, Tuple, Union
 from enum import Enum
 import pandas as pd
+import logging
+
+log = logging.Logger(__name__)
 
 
 def update_average(
@@ -40,13 +43,13 @@ def update_recency_weighted_average(
 
 
 class Action(Enum):
-    ABRT = -0
+    ABRT = 0
     RETRY0 = 1
     RETRY0_1 = 2
     RETRY0_2 = 3
     RETRY0_5 = 4
 
-    def sleeptime(self):
+    def sleeptime(self) -> float:
         if self == Action.RETRY0_1:
             return 0.1
         elif self == Action.RETRY0_2:
@@ -81,6 +84,14 @@ class RLRetryNoException(RuntimeError):
 def default_state_func(e: Exception) -> str:
     return e.__class__.__name__
 
+def default_alpha_func(n: int) -> float:
+    '''
+    n is the count of attempts made so far for this state/action pair
+    '''
+    if n > 5:
+        return 0.05
+    return 0.5 - n * 0.45 / 6
+
 
 class StateActionMap:
     def __init__(
@@ -88,7 +99,7 @@ class StateActionMap:
         df: pd.DataFrame,
         counts_df: pd.DataFrame,
         initial_value: float = 0.0,
-        alpha: float = 0.0,
+        alpha: Union[float, None, Callable[[int], float]] = 0.0,
     ):
         self._df = StateActionMap.default_df() if df is None or df.empty else df
         self._counts_df = (
@@ -99,7 +110,14 @@ class StateActionMap:
         self._last_saved_df = self._df.copy(deep=True)
         self._last_saved_counts_df = self._counts_df.copy(deep=True)
         self._initial_value = initial_value
-        self._alpha = alpha
+
+        if callable(alpha):
+            self._alpha = alpha
+        elif isinstance(alpha, float):
+            self._alpha = lambda _: alpha
+        else:
+            self._alpha = None
+
 
     @staticmethod
     def default_df() -> pd.DataFrame:
@@ -137,8 +155,8 @@ class StateActionMap:
         value_delta = new_reward - current_average
         # if alpha has been specified, use that as a recency weighting
         # otherwise use average reward
-        if self._alpha > 0.0:
-            value_delta *= self._alpha
+        if self._alpha is not None:
+            value_delta *= self._alpha(count)
         else:
             value_delta /= count + 1
 
@@ -175,7 +193,7 @@ class RLAgent:
             [pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame], None
         ] = _default_weight_dumper,
         initial_value: float = 0.0,
-        alpha: float = 0.0,
+        alpha: Union[float, None, Callable[[int], float]] = 0.0,
         dump_interval: int = 100,
     ):
         self._state_action_map = StateActionMap(
@@ -202,7 +220,7 @@ class RLAgent:
             self.dump_weights()
 
         if random.random() < self._eps:
-            print("agent choosing random action")
+            log.debug("agent choosing random action")
             return self._state_action_map.random_action()
         return self._state_action_map.best_action(state)
 
@@ -235,20 +253,16 @@ class RLEnvironment:
 
     def next_state_to_reward(self, next_state: str, duration: timedelta) -> float:
         if next_state == "success":
-            return 1 - duration / self._max_wait
-        return -1 - duration / self._max_wait
+            return 2.5 - duration / self._max_wait
+        return 1 - duration / self._max_wait
 
-    def execute_action(self, action: Action):
-        # print(f"RLEnvironment execute_action({state}, {action})")
+    def execute_action(self, action: Action) -> Tuple[str, float]:
+        log.debug(f"RLEnvironment execute_action({action})")
         previous_action_start_time = datetime.utcnow()
-        if action == Action.ABRT:
-            # need to give -1 reward to the state/action
-            next_state = "abort"
-        else:
-            if action != Action.RETRY0:
-                time.sleep(self._max_wait.total_seconds() * action.sleeptime())
 
-            next_state = self.run_func()
+        next_state = self.run_func() if action != Action.ABRT else "abort"
+
+        time.sleep(self._max_wait.total_seconds() * action.sleeptime())
 
         reward = self.next_state_to_reward(
             next_state, datetime.utcnow() - previous_action_start_time
@@ -270,7 +284,7 @@ def rlretry(
     ] = _default_weight_dumper,
     dump_interval: int = 100,
     optimistic_initial_values: bool = True,
-    alpha=0.0,
+    alpha: Union[float, None, Callable[[int], float]] = None,
     raise_primary_exception=True,
 ):
     """
