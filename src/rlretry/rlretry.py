@@ -270,7 +270,6 @@ class RLEnvironment:
 
         return next_state, reward
 
-
 def rlretry(
     max_retries: int = 5,
     timeout: timedelta = timedelta(seconds=300),
@@ -284,8 +283,8 @@ def rlretry(
     ] = _default_weight_dumper,
     dump_interval: int = 100,
     optimistic_initial_values: bool = True,
-    alpha: Union[float, None, Callable[[int], float]] = None,
-    raise_primary_exception=True,
+    alpha: Union[float, None, Callable[[int], float]] = default_alpha_func,
+    raise_primary_exception=False,
 ):
     """
     A decorator that performs retries on a function if it throws an exceptions.
