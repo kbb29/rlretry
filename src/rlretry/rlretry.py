@@ -128,7 +128,9 @@ class StateActionMap:
 
     @staticmethod
     def random_action() -> Action:
-        return random.choice(list(Action))
+        # don't ever choose ABRT as a random action
+        # the reward doesn't change so we don't need to explore it
+        return random.choice(list(Action)[1:])
 
     def best_action(self, state) -> Action:
         if state not in self._df.index:
@@ -143,14 +145,15 @@ class StateActionMap:
         return best_action
 
     def create_state(self, state: str):
-        self._df.loc[state] = [float(self._initial_value) for _ in list(Action)]
+        # always set ABRT to have a reward of 1, regardless of other settings.
+        self._df.loc[state] = [1.0] + [float(self._initial_value) for _ in list(Action)[1:]]
         self._counts_df.loc[state] = [0 for _ in list(Action)]
 
     def update_average_reward(self, state: str, action: Action, new_reward: float):
         if state not in self._df.index:
             self.create_state(state)
-        count = self._counts_df.loc[state][action]
-        current_average = self._df.loc[state][action]
+        count = self._counts_df[action][state]
+        current_average = self._df[action][state]
         value_delta = new_reward - current_average
         # if alpha has been specified, use that as a recency weighting
         # otherwise use average reward
@@ -159,8 +162,8 @@ class StateActionMap:
         else:
             value_delta /= count + 1
 
-        self._df.loc[state][action] += value_delta
-        self._counts_df.loc[state][action] += 1
+        self._df[action][state] += value_delta
+        self._counts_df[action][state] += 1
 
     def update_last_saved(self):
         self._last_saved_df = self._df.copy(deep=True)
