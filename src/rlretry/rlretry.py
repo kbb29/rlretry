@@ -60,9 +60,8 @@ class Action(Enum):
 
 
 class RLRetryError(RuntimeError):
-    def __init__(self, e: Exception, msg: str = ""):
+    def __init__(self, msg: str = ""):
         super().__init__(msg)
-        self.original_exception = e
 
 
 class RLRetryTimeout(RLRetryError):
@@ -302,11 +301,11 @@ def rlretry(
     """
     initial_value = 1 if optimistic_initial_values else 0.0
 
-    def raise_rlexception(e: RLRetryError):
-        raise e
+    def raise_rlexception(e: RLRetryError, original_exception: Exception):
+        raise e from original_exception
 
-    def raise_original_exception(e: RLRetryError):
-        raise e.original_exception
+    def raise_original_exception(_e: RLRetryError, original_exception: Exception):
+        raise original_exception
 
     raise_exception = (
         raise_original_exception if raise_primary_exception else raise_rlexception
@@ -333,7 +332,7 @@ def rlretry(
 
             for _ in range(max_retries):
                 if datetime.utcnow() - start_time > timeout:
-                    raise_exception(RLRetryTimeout(environment.last_exception))
+                    raise_exception(RLRetryTimeout(), environment.last_exception)
                 action = agent.choose_action(current_state)
                 previous_state = current_state
                 current_state, reward = environment.execute_action(
@@ -345,12 +344,11 @@ def rlretry(
                 elif current_state == "abort":
                     raise_exception(
                         RLRetryAbort(
-                            environment.last_exception,
                             f"encountered a state in which RLRetry thinks it is not worth continuing {previous_state}",
-                        )
+                        ), environment.last_exception
                     )
 
-            raise_exception(RLRetryMaxRetries(environment.last_exception))
+            raise_exception(RLRetryMaxRetries(), environment.last_exception)
 
         if return_agent:
             return wrapper, agent
