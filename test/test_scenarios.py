@@ -66,6 +66,9 @@ def test_scenario_1(mocker, retries, timeout_int, iterations, fail_duration_int)
         optimistic_initial_values=True,
     )(dummy_func, return_agent=True)
 
+    assert agent._state_action_map._counts_df.empty
+    assert agent._state_action_map._df.empty
+
     for _ in range(iterations):
         try:
             wrapped_func()
@@ -86,6 +89,8 @@ def test_scenario_2(mocker, retries, timeout_int, iterations):
     test to make sure that aborting doesn't result in a higher average reward than
     waiting for ages and then getting success.
     """
+
+    random.seed(0)
 
     def dummy_func():
         raise RuntimeError("badness ocurred")
@@ -118,6 +123,9 @@ def test_scenario_2(mocker, retries, timeout_int, iterations):
         alpha=default_alpha_func,
         optimistic_initial_values=True,
     )(dummy_func, return_agent=True)
+
+    assert agent._state_action_map._counts_df.empty
+    assert agent._state_action_map._df.empty
 
     for _ in range(iterations):
         try:

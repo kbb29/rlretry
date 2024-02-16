@@ -1,5 +1,6 @@
 from __future__ import annotations
 from datetime import datetime, timedelta
+import math
 import random
 import time
 from typing import Callable, Tuple, Union
@@ -83,10 +84,11 @@ class RLRetryNoException(RuntimeError):
 def default_state_func(e: Exception) -> str:
     return e.__class__.__name__
 
+
 def default_alpha_func(n: int) -> float:
-    '''
+    """
     n is the count of attempts made so far for this state/action pair
-    '''
+    """
     if n > 5:
         return 0.05
     return 0.5 - n * 0.45 / 6
@@ -117,7 +119,6 @@ class StateActionMap:
         else:
             self._alpha = None
 
-
     @staticmethod
     def default_df() -> pd.DataFrame:
         return pd.DataFrame(columns=list(Action), dtype=pd.Float32Dtype())
@@ -131,6 +132,30 @@ class StateActionMap:
         # don't ever choose ABRT as a random action
         # the reward doesn't change so we don't need to explore it
         return random.choice(list(Action)[1:])
+
+    def randomish_action(self, state: str) -> Action:
+        # don't ever choose ABRT as a random action
+        # the reward doesn't change so we don't need to explore it
+
+        # choose an action at random, but prefer those which have been tried the least
+
+        # if we have no counts yet, just choose randomly
+        if self._counts_df.empty:
+            return self.__class__.random_action()
+
+        # to make the weights take the inverse of the count (we want a low count to mean a high probability of being chosen)
+        # take the log of the counts too so that small numbers have more impact. ie.
+        #   if an action has been chosen once it should be significantly more likely than an option chosen 10 times
+        #   but an option chosen 100 times should be about the same as an option chosen 1000 times
+        #   bascially, in the long run, the weights will even out at roughly even
+        #   but at the start, infrequently chosen options will be boosted
+        possible_actions = list(Action)[1:]
+        weights = [
+            1 / math.log(2 + self._counts_df[action][state])
+            for action in possible_actions
+        ]
+        return random.choices(possible_actions, weights=weights)[0]
+
 
     def best_action(self, state) -> Action:
         if state not in self._df.index:
@@ -146,7 +171,9 @@ class StateActionMap:
 
     def create_state(self, state: str):
         # always set ABRT to have a reward of 1, regardless of other settings.
-        self._df.loc[state] = [1.0] + [float(self._initial_value) for _ in list(Action)[1:]]
+        self._df.loc[state] = [1.0] + [
+            float(self._initial_value) for _ in list(Action)[1:]
+        ]
         self._counts_df.loc[state] = [0 for _ in list(Action)]
 
     def update_average_reward(self, state: str, action: Action, new_reward: float):
@@ -223,7 +250,7 @@ class RLAgent:
 
         if random.random() < self._eps:
             log.debug("agent choosing random action")
-            return self._state_action_map.random_action()
+            return self._state_action_map.randomish_action(state)
         return self._state_action_map.best_action(state)
 
     def apply_reward(self, state, action, reward):
@@ -271,6 +298,7 @@ class RLEnvironment:
         )
 
         return next_state, reward
+
 
 def rlretry(
     max_retries: int = 5,
@@ -338,9 +366,7 @@ def rlretry(
                     raise_exception(RLRetryTimeout(), environment.last_exception)
                 action = agent.choose_action(current_state)
                 previous_state = current_state
-                current_state, reward = environment.execute_action(
-                    action
-                )
+                current_state, reward = environment.execute_action(action)
                 agent.apply_reward(previous_state, action, reward)
                 if current_state == "success":
                     return environment.func_retval
@@ -348,7 +374,8 @@ def rlretry(
                     raise_exception(
                         RLRetryAbort(
                             f"encountered a state in which RLRetry thinks it is not worth continuing {previous_state}",
-                        ), environment.last_exception
+                        ),
+                        environment.last_exception,
                     )
 
             raise_exception(RLRetryMaxRetries(), environment.last_exception)
